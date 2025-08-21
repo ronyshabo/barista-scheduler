@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Barista Pay Calculator</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 2rem; }
+      form { display: flex; gap: 1rem; flex-wrap: wrap; align-items: end; }
+      label { display: block; font-size: .9rem; color: #444; }
+      input[type=date], input[type=number] { padding: .5rem; font-size: 1rem; }
+      button { padding: .6rem 1rem; font-size: 1rem; cursor: pointer; }
+      table { border-collapse: collapse; margin-top: 1.5rem; width: 100%; }
+      th, td { border: 1px solid #ddd; padding: .6rem .5rem; text-align: left; }
+      th { background: #f8f8f8; }
+      tfoot td { font-weight: 600; }
+      .right { text-align: right; }
+    </style>
+  </head>
+  <body>
+    <h1>Barista Pay Calculator</h1>
+
+    <form action="/refresh" method="post">
+      <div>
+        <label for="start">From date</label>
+        <input id="start" name="start" type="date" value="{{ start_default }}" required>
+      </div>
+      <div>
+        <label for="end">To date (exclusive)</label>
+        <input id="end" name="end" type="date" value="{{ end_default }}" required>
+      </div>
+      <div>
+<div>
+  <label for="flat">Flat pay per shift ($)</label>
+  <input id="flat" name="flat" type="number" step="0.01" value="{{ '%.2f' % flat_default }}" required>
+</div>
+<div>
+  <label for="cc_tips">Total CC tips ($)</label>
+  <input id="cc_tips" name="cc_tips" type="number" step="0.01" value="{{ '%.2f' % cc_tips_default }}">
+</div>
+<div>
+  <label for="cash_tips">Total Cash tips ($)</label>
+  <input id="cash_tips" name="cash_tips" type="number" step="0.01" value="{{ '%.2f' % cash_tips_default }}">
+</div>
+<div>
+  <label for="morning_tips">Morning tips (09:00–14:00)</label>
+  <input id="morning_tips" name="morning_tips" type="number" step="0.01"
+         value="0.00">
+</div>
+<div>
+  <label for="evening_tips">Evening tips (14:00–close)</label>
+  <input id="evening_tips" name="evening_tips" type="number" step="0.01"
+         value="0.00">
+</div>
+      <div>
+        <button type="submit">Refresh from Google Calendar</button>
+      </div>
+    </form>
+
+    {% if rows %}
+     <table>
+  <thead>
+    <tr>
+      <th>Barista</th>
+      <th class="right">Shifts</th>
+      <th class="right">Base Pay</th>
+      <th class="right">CC Tips</th>
+      <th class="right">Cash Tips</th>
+      <th class="right">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.name }}</td>
+        <td class="right">{{ r.shifts }}</td>
+        <td class="right">${{ '%.2f' % r.base_pay }}</td>
+        <td class="right">${{ '%.2f' % r.cc_tips }}</td>
+        <td class="right">${{ '%.2f' % r.cash_tips }}</td>
+        <td class="right">${{ '%.2f' % r.total }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td>Totals</td>
+      <td class="right">{{ summary.total_shifts }}</td>
+      <td class="right">${{ '%.2f' % summary.flat_per_shift }}</td>
+      <td class="right">${{ '%.2f' % summary.total_cc_tips }}</td>
+      <td class="right">${{ '%.2f' % summary.total_cash_tips }}</td>
+      <td class="right">${{ '%.2f' % summary.grand_total }}</td>
+    </tr>
+  </tfoot>
+</table>
+    {% endif %}
+
+    <p style="margin-top:1rem;color:#666;font-size:.9rem;">
+      Tip: In your calendar event title, include barista names (e.g., "Alex & Sam - Morning Shift"). You can also add attendee emails.
+    </p>
+  </body>
+</html>
