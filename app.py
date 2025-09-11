@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta, date
 from dotenv import load_dotenv
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, flash, redirect, url_for, session
 
 from gcal_client import fetch_events
 from compute import load_employees, compute_payouts, match_baristas, Employee
@@ -15,10 +15,12 @@ def _daterange(start_d: date, end_d: date):
     while d < end_d:
         yield d
         d += timedelta(days=1)
+
         
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "your-secret-key-here")  # For flash messages
 
 TZ = os.getenv("TZ", "America/Chicago")
 CALENDAR_ID = os.getenv("CALENDAR_ID", "primary")
@@ -43,6 +45,7 @@ def index():
         cc_close_default=0.0,
         cash_close_default=0.0,
     )
+
 
 
 @app.post("/refresh")
@@ -84,6 +87,7 @@ def refresh():
     # Phase 2 → read per-day Opening/Closing CC tips and compute
     per_day_cc_open_map = {}
     per_day_cc_close_map = {}
+    
     for dstr in request.form.getlist("dates"):
         per_day_cc_open_map[dstr]  = float(request.form.get(f"cc_open_{dstr}") or 0.0)
         per_day_cc_close_map[dstr] = float(request.form.get(f"cc_close_{dstr}") or 0.0)

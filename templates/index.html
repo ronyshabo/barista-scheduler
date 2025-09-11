@@ -65,6 +65,19 @@
 </head>
 <body>
   <div class="container">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="margin-bottom:16px;">
+          {% for category, message in messages %}
+            <div class="card" style="background: {% if category == 'error' %}#fef2f2; border-color: #fecaca; color: #dc2626;{% elif category == 'success' %}#f0fdf4; border-color: #bbf7d0; color: #16a34a;{% elif category == 'warning' %}#fffbeb; border-color: #fed7aa; color: #d97706;{% else %}#f8fafc; border-color: #e2e8f0; color: #475569;{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
     <div class="card">
       <h1>Barista Payouts</h1>
       <p class="muted">Hours: <b>Open 08:00</b> → <b>Switch 14:00</b> → <b>Close 21:00</b>. Tips are split only among baristas on-duty in each window (openers/closers).</p>
@@ -88,6 +101,7 @@
           <a class="link" href="/">Reset</a>
         </div>
       </form>
+
 
       <!-- Recognized employees (only those on the selected range) -->
       <details>

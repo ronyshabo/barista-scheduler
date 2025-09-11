@@ -63,8 +63,8 @@ def _overlap_minutes(a_start: datetime, a_end: datetime, b_start: datetime, b_en
 
 # -------- Naive datetime helpers (no timezones) --------
 
-def _parse_dt(dt_iso: str) -> datetime:
-    """Return a naive datetime from an ISO string (handles 'Z' UTC)."""
+def _parse_dt(dt_iso: str, tz_name: str = "America/Chicago") -> datetime:
+    """Return a naive datetime from an ISO string, converted to local timezone."""
     if not dt_iso:
         raise ValueError("Empty datetime string")
 
@@ -79,28 +79,47 @@ def _parse_dt(dt_iso: str) -> datetime:
 
     dt = datetime.fromisoformat(s)  # may contain offset
     if dt.tzinfo:
-        # Keep behavior consistent with your existing code: use naive
-        # (drop tzinfo without converting). If you prefer localize/convert,
-        # we can switch, but this matches prior logic.
-        dt = dt.replace(tzinfo=None)
+        # Convert to local timezone and make naive
+        from zoneinfo import ZoneInfo
+        local_tz = ZoneInfo(tz_name)
+        dt = dt.astimezone(local_tz).replace(tzinfo=None)
     return dt
 
-def _on_duty_at(ts: datetime, ev_start: str, ev_end: str) -> bool:
-    s = _parse_dt(ev_start)
-    e = _parse_dt(ev_end)
+def _on_duty_at(ts: datetime, ev_start: str, ev_end: str, tz_name: str = "America/Chicago") -> bool:
+    s = _parse_dt(ev_start, tz_name)
+    e = _parse_dt(ev_end, tz_name)
     return s <= ts < e
 
 def _localize(d: date, t: time) -> datetime:
     # produce naive dt for date d at time t
     return datetime(d.year, d.month, d.day, t.hour, t.minute, t.second)
 
-def _crew_covering(events: List[Dict], employees: List[Employee], ts: datetime) -> List[Employee]:
+def _crew_covering(events: List[Dict], employees: List[Employee], ts: datetime, tz_name: str = "America/Chicago") -> List[Employee]:
     crew: Dict[str, Employee] = {}
     for e in events:
         assignees = match_baristas(e.get("summary", ""), e.get("attendees", []), employees)
         if not assignees:
             continue
-        if _on_duty_at(ts, e.get("start", ""), e.get("end", "")):
+        if _on_duty_at(ts, e.get("start", ""), e.get("end", ""), tz_name):
+            for emp in assignees:
+                crew[emp.name] = emp
+    return list(crew.values())
+
+def _crew_covering_window(events: List[Dict], employees: List[Employee], window_start: datetime, window_end: datetime, tz_name: str = "America/Chicago") -> List[Employee]:
+    """Find employees whose shifts overlap with the given time window."""
+    crew: Dict[str, Employee] = {}
+    for e in events:
+        assignees = match_baristas(e.get("summary", ""), e.get("attendees", []), employees)
+        if not assignees:
+            continue
+        
+        # Parse event start and end times with timezone conversion
+        event_start = _parse_dt(e.get("start", ""), tz_name)
+        event_end = _parse_dt(e.get("end", ""), tz_name)
+        
+        # Check if the event overlaps with the time window
+        # An event overlaps if it starts before the window ends and ends after the window starts
+        if event_start < window_end and event_end > window_start:
             for emp in assignees:
                 crew[emp.name] = emp
     return list(crew.values())
@@ -153,17 +172,12 @@ def compute_payouts(
         t_switch = _localize(d, SWITCH)
         t_close  = _localize(d, CLOSE)
 
-        open_window_crew = {e.name: e for e in _crew_covering(events, employees, t_open)}
-        sample_hour = max(OPEN.hour, min(SWITCH.hour - 1, 23))
-        t_sample_m  = _localize(d, time(sample_hour, 30))
-        for e in _crew_covering(events, employees, t_sample_m):
-            open_window_crew[e.name] = e
-        open_window_crew = list(open_window_crew.values())
-
-        close_window_crew = {e.name: e for e in _crew_covering(events, employees, t_switch)}
-        for e in _crew_covering(events, employees, t_close):
-            close_window_crew[e.name] = e
-        close_window_crew = list(close_window_crew.values())
+        # Use proper time windows for shift assignment
+        # Opening shift: 8am to 2pm
+        open_window_crew = _crew_covering_window(events, employees, t_open, t_switch, tz_name)
+        
+        # Closing shift: 2pm to 9pm  
+        close_window_crew = _crew_covering_window(events, employees, t_switch, t_close, tz_name)
 
         # (Optional) per-employee switch_override block goes here if you added it
         # ... keep your override adjustment here ...
