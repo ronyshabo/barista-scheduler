@@ -179,6 +179,7 @@
             <thead>
               <tr>
                 <th>Date</th>
+                <th>Day</th>
                 {% for name in summary.schedule_headers %}
                   <th>{{ name }}</th>
                 {% endfor %}
@@ -188,6 +189,7 @@
               {% for r in summary.schedule_rows %}
               <tr>
                 <td>{{ r.date }}</td>
+                <td>{{ r.day_of_week }}</td>
                 {% for name in summary.schedule_headers %}
                   <td>{{ r.cells[name] }}</td>
                 {% endfor %}

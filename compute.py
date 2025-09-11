@@ -206,7 +206,10 @@ def compute_payouts(
         for e in close_window_crew:
             cell[e.name] += ("/" if cell[e.name] else "")
             cell[e.name] += ("C*" if shared_close else "C")
-        schedule_rows.append({"date": d.isoformat(), "cells": cell})
+        # Get day of the week (Monday=0, Sunday=6)
+        day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        day_of_week = day_names[d.weekday()]
+        schedule_rows.append({"date": d.isoformat(), "day_of_week": day_of_week, "cells": cell})
 
         d += timedelta(days=1)
 
