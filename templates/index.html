@@ -1,101 +1,224 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Barista Pay Calculator</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 2rem; }
-      form { display: flex; gap: 1rem; flex-wrap: wrap; align-items: end; }
-      label { display: block; font-size: .9rem; color: #444; }
-      input[type=date], input[type=number] { padding: .5rem; font-size: 1rem; }
-      button { padding: .6rem 1rem; font-size: 1rem; cursor: pointer; }
-      table { border-collapse: collapse; margin-top: 1.5rem; width: 100%; }
-      th, td { border: 1px solid #ddd; padding: .6rem .5rem; text-align: left; }
-      th { background: #f8f8f8; }
-      tfoot td { font-weight: 600; }
-      .right { text-align: right; }
-    </style>
-  </head>
-  <body>
-    <h1>Barista Pay Calculator</h1>
+<head>
+  <meta charset="utf-8">
+  <title>Barista Payouts</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #f7f7f8;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --accent: #2563eb;
+      --accent-2: #1e40af;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      background: var(--bg); color: var(--text);
+    }
+    .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 12px; }
+    h2 { font-size: 1.25rem; margin: 20px 0 12px; }
+    p.muted { color: var(--muted); margin-top: 6px; }
+    .grid-1 { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    label { display: block; font-size: 0.92rem; margin: 8px 0 6px; color: var(--muted); }
+    input[type="date"],
+    input[type="number"],
+    input[type="text"] {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: #fff;
+      font-size: 0.95rem; color: var(--text);
+    }
+    .actions { margin-top: 14px; display: flex; gap: 8px; }
+    button {
+      appearance: none; border: none; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+      background: var(--accent); color: #fff; font-weight: 600;
+    }
+    button:hover { background: var(--accent-2); }
+    a.link { color: var(--accent); text-decoration: none; font-weight: 600; }
+    a.link:hover { text-decoration: underline; }
 
-    <form action="/refresh" method="post">
-      <div>
-        <label for="start">From date</label>
-        <input id="start" name="start" type="date" value="{{ start_default }}" required>
-      </div>
-      <div>
-        <label for="end">To date (exclusive)</label>
-        <input id="end" name="end" type="date" value="{{ end_default }}" required>
-      </div>
-      <div>
-<div>
-  <label for="flat">Flat pay per shift ($)</label>
-  <input id="flat" name="flat" type="number" step="0.01" value="{{ '%.2f' % flat_default }}" required>
-</div>
-<div>
-  <label for="cc_tips">Total CC tips ($)</label>
-  <input id="cc_tips" name="cc_tips" type="number" step="0.01" value="{{ '%.2f' % cc_tips_default }}">
-</div>
-<div>
-  <label for="cash_tips">Total Cash tips ($)</label>
-  <input id="cash_tips" name="cash_tips" type="number" step="0.01" value="{{ '%.2f' % cash_tips_default }}">
-</div>
-<div>
-  <label for="morning_tips">Morning tips (09:00–14:00)</label>
-  <input id="morning_tips" name="morning_tips" type="number" step="0.01"
-         value="0.00">
-</div>
-<div>
-  <label for="evening_tips">Evening tips (14:00–close)</label>
-  <input id="evening_tips" name="evening_tips" type="number" step="0.01"
-         value="0.00">
-</div>
-      <div>
-        <button type="submit">Refresh from Google Calendar</button>
-      </div>
-    </form>
+    .table-wrap {
+      overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: #fff;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; min-width: 760px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+    thead th { position: sticky; top: 0; background: #fafafa; z-index: 1; font-size: 0.9rem; }
+    tfoot td { font-weight: 700; background: #fafafa; }
+    .right { text-align: right; }
+    .badge {
+      display: inline-block; padding: 2px 8px; font-size: 0.8rem; border-radius: 999px; background: #eef2ff; color: #3730a3;
+    }
+    details { margin-top: 10px; }
+    details summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+    .kvs { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+    .kv { padding: 8px 10px; background: #fafafa; border: 1px solid var(--line); border-radius: 10px; }
+    .kv b { display: block; font-size: 0.9rem; margin-bottom: 4px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Barista Payouts</h1>
+      <p class="muted">Hours: <b>Open 08:00</b> → <b>Switch 14:00</b> → <b>Close 21:00</b>. Tips are split only among baristas on-duty in each window (openers/closers).</p>
 
-    {% if rows %}
-     <table>
-  <thead>
-    <tr>
-      <th>Barista</th>
-      <th class="right">Shifts</th>
-      <th class="right">Base Pay</th>
-      <th class="right">CC Tips</th>
-      <th class="right">Cash Tips</th>
-      <th class="right">Total</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for r in rows %}
-      <tr>
-        <td>{{ r.name }}</td>
-        <td class="right">{{ r.shifts }}</td>
-        <td class="right">${{ '%.2f' % r.base_pay }}</td>
-        <td class="right">${{ '%.2f' % r.cc_tips }}</td>
-        <td class="right">${{ '%.2f' % r.cash_tips }}</td>
-        <td class="right">${{ '%.2f' % r.total }}</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-  <tfoot>
-    <tr>
-      <td>Totals</td>
-      <td class="right">{{ summary.total_shifts }}</td>
-      <td class="right">${{ '%.2f' % summary.flat_per_shift }}</td>
-      <td class="right">${{ '%.2f' % summary.total_cc_tips }}</td>
-      <td class="right">${{ '%.2f' % summary.total_cash_tips }}</td>
-      <td class="right">${{ '%.2f' % summary.grand_total }}</td>
-    </tr>
-  </tfoot>
-</table>
+      <!-- STEP 1: Pick date range -->
+      <form method="post" action="/refresh" novalidate>
+        <div class="grid-1">
+          <div class="card" style="padding:12px;">
+            <h2 style="margin-top:0;">Date Range</h2>
+
+            <label for="start">Start</label>
+            <input id="start" name="start" type="date" value="{{ start_default }}" required>
+
+            <label for="end">End (inclusive)</label>
+            <input id="end" name="end" type="date" value="{{ end_default }}" required>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit">Next: Enter Tips</button>
+          <a class="link" href="/">Reset</a>
+        </div>
+      </form>
+
+      <!-- Recognized employees (only those on the selected range) -->
+      <details>
+        <summary>Employees recognized</summary>
+        <div style="margin-top:8px;">
+          {% if recognized_employees and recognized_employees|length > 0 %}
+            <ul style="margin:6px 0 0 18px;">
+              {% for e in recognized_employees %}
+                <li><b>{{ e.name }}</b> <span class="muted">— aliases: {{ e.aliases|join(', ') }}</span></li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="muted">No scheduled employees in this date range.</p>
+          {% endif %}
+        </div>
+      </details>
+    </div>
+
+    <!-- STEP 2: Per-day Opening/Closing CC inputs (shown after picking a range) -->
+    {% if dates_to_fill %}
+      <div class="card" style="margin-top:16px;">
+        <h2 style="margin-top:0;">Enter Credit Card Tips per Day</h2>
+        <form method="post" action="/refresh">
+          <input type="hidden" name="start" value="{{ start_default }}">
+          <input type="hidden" name="end" value="{{ end_default }}">
+          <input type="hidden" name="tips_phase" value="1">
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th class="right">Opening (08:00 → 14:00)</th>
+                  <th class="right">Closing (14:00 → 21:00)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for d in dates_to_fill %}
+                  <tr>
+                    <td>
+                      {{ d }}
+                      <input type="hidden" name="dates" value="{{ d }}">
+                    </td>
+                    <td class="right"><input name="cc_open_{{ d }}"  type="number" step="0.01" min="0" value="0"></td>
+                    <td class="right"><input name="cc_close_{{ d }}" type="number" step="0.01" min="0" value="0"></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="actions" style="margin-top:12px;">
+            <button type="submit">Compute Payouts</button>
+          </div>
+        </form>
+      </div>
     {% endif %}
 
-    <p style="margin-top:1rem;color:#666;font-size:.9rem;">
-      Tip: In your calendar event title, include barista names (e.g., "Alex & Sam - Morning Shift"). You can also add attendee emails.
-    </p>
-  </body>
+    <!-- RESULTS -->
+    {% if rows %}
+      <div class="card" style="margin-top:16px;">
+        <h2 style="margin-top:0;">Summary</h2>
+
+        <div class="kvs">
+          <div class="kv"><b>Days</b><div>{{ summary.days }}</div></div>
+          <div class="kv"><b>Total Base</b><div>${{ '%.2f'|format(summary.total_base) }}</div></div>
+          <div class="kv"><b>Total CC Tips</b><div>${{ '%.2f'|format(summary.total_cc) }}</div></div>
+          <div class="kv"><b>Total Tips</b><div>${{ '%.2f'|format(summary.total_tips) }}</div></div>
+          <div class="kv"><b>Grand Total</b><div><span class="badge">${{ '%.2f'|format(summary.grand_total) }}</span></div></div>
+        </div>
+
+        <h3 style="margin:16px 0 8px;">Schedule (by date)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                {% for name in summary.schedule_headers %}
+                  <th>{{ name }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in summary.schedule_rows %}
+              <tr>
+                <td>{{ r.date }}</td>
+                {% for name in summary.schedule_headers %}
+                  <td>{{ r.cells[name] }}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="muted" style="margin-top:6px;">Legend: O = Open, C = Close, * = shared window (2+ baristas in that window).</p>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h2 style="margin-top:0;">Payouts</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th class="right">Base Pay</th>
+                <th class="right">CC Tips</th>
+                <th class="right">Base + Split Tips</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+              <tr>
+                <td>{{ r.name }}</td>
+                <td class="right">${{ '%.2f'|format(r.base_pay) }}</td>
+                <td class="right">${{ '%.2f'|format(r.tips_cc) }}</td>
+                <td class="right"><b>${{ '%.2f'|format(r.base_plus_split) }}</b></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Totals</td>
+                <td class="right">${{ '%.2f'|format(summary.total_base) }}</td>
+                <td class="right">${{ '%.2f'|format(summary.total_cc) }}</td>
+                <td class="right"><b>${{ '%.2f'|format(summary.grand_total) }}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</body>
 </html>
