@@ -1,0 +1,13 @@
+{
+  "hosting": {
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "barista-pay",
+          "region": "us-central1"
+        }
+      }
+    ]
+  }
+}

@@ -60,6 +60,24 @@ A safer approach is to create a Service Account key and use Service Account doma
 ### Deploy
 Push to `main` or run the workflow manually (Actions → Deploy to Cloud Run). After deploy, the job prints the service URL.
 
+## Optional: Firebase Hosting in front of Cloud Run
+
+Use Firebase Hosting as a CDN/SSL edge and proxy all routes to your Cloud Run service.
+
+Included files:
+- `firebase.json` — rewrites everything to Cloud Run service `barista-pay` in region `us-central1`.
+- `.firebaserc` — set `YOUR_FIREBASE_PROJECT_ID` to your project.
+- `.github/workflows/deploy-firebase.yml` — deploys Hosting on push (requires a token).
+
+Steps:
+1. Create/choose a Firebase project linked to the same GCP project as Cloud Run.
+2. Edit `.firebaserc` to set your project ID.
+3. If your Cloud Run service name or region differ, update `firebase.json` accordingly.
+4. Create GitHub secret `FIREBASE_TOKEN` (run `firebase login:ci` locally to generate).
+5. Push to `main` to deploy Hosting. You can connect a custom domain in Firebase console.
+
+Note: This does not replace Cloud Run; Hosting acts as a frontend proxy to your backend.
+
 ## Quick alternative: Render.com
 1. Push this repo to GitHub.
 2. Create a new Web Service in Render, connect the repo.
