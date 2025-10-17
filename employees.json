@@ -1,0 +1,6 @@
+[
+  { "name": "Youssef", "aliases": ["Youssef", "Youssef S", "youssefshabo@gmail.com"] ,"base": 0.0, "switch_override": "None" },
+  { "name": "Rony",  "aliases": ["Rony","Rony S", "ronyshabbo@gmail.com"], "base": 0.0 },
+  { "name": "Kat", "aliases": ["Kat", "Kat B", "blackwellkatherine99@gmail.com"], "base": 50.0},
+  { "name": "Daphne", "aliases": ["Daphne", "Daphne N", "Daphne.an.nguyen@gmail.com"], "base": 50.0 }
+]
