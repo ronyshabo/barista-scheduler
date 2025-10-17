@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+
+# Envs
+.env
+.venv/
+venv/
+ENV/
+
+# IDE/editor
+.vscode/
+.idea/
+.DS_Store
+
+# OAuth secrets (do NOT commit)
+barista-pay/credentials.json
+barista-pay/token.json
+
+# Build artifacts
+build/
+dist/

@@ -1,0 +1,10 @@
+TODO asap
+jinja2.exceptions.UndefinedError: 'cc_tips_default' is undefined
+
+
+
+.env
+TZ=America/Chicago
+OPEN_TIME=09:00
+SWITCH_TIME=14:00
+CLOSE_TIME=21:00

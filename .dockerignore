@@ -1,0 +1,21 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+.idea/
+.vscode/
+.DS_Store
+.git/
+.gitignore
+# Local OAuth tokens/creds should not go into image by default
+barista-pay/credentials.json
+barista-pay/token.json
