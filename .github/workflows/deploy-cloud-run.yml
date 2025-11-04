@@ -24,6 +24,8 @@ jobs:
       OPEN_TIME: '08:00'
       SWITCH_TIME: '14:00'
       CLOSE_TIME: '21:00'
+  GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDS_JSON }}
+  GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
 
     steps:
       - name: Checkout
@@ -59,7 +61,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 8080 \
-            --set-env-vars CALENDAR_ID=${{ env.CALENDAR_ID }},SECRET_KEY=${{ env.SECRET_KEY }},TZ=${{ env.TZ }},OPEN_TIME=${{ env.OPEN_TIME }},SWITCH_TIME=${{ env.SWITCH_TIME }},CLOSE_TIME=${{ env.CLOSE_TIME }}
+            --set-env-vars CALENDAR_ID=${{ env.CALENDAR_ID }},SECRET_KEY=${{ env.SECRET_KEY }},TZ=${{ env.TZ }},OPEN_TIME=${{ env.OPEN_TIME }},SWITCH_TIME=${{ env.SWITCH_TIME }},CLOSE_TIME=${{ env.CLOSE_TIME }},GOOGLE_CREDS_JSON=${{ env.GOOGLE_CREDS_JSON }},GOOGLE_TOKEN_JSON=${{ env.GOOGLE_TOKEN_JSON }}
 
       - name: Output service URL
         run: |

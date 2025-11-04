@@ -27,9 +27,14 @@ jobs:
       - name: Firebase Deploy
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
           if [ -z "$FIREBASE_TOKEN" ]; then
             echo "FIREBASE_TOKEN secret is missing. Create it with 'firebase login:ci' output." >&2
             exit 1
           fi
-          firebase deploy --only hosting --non-interactive
+          if [ -z "$FIREBASE_PROJECT_ID" ]; then
+            echo "FIREBASE_PROJECT_ID secret is missing (your Firebase project ID)." >&2
+            exit 1
+          fi
+          firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive

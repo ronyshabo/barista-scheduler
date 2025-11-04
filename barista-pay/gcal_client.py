@@ -16,6 +16,10 @@ SCOPES = [
 TOKEN_PATH = os.getenv("GOOGLE_TOKEN_PATH", "token.json")
 CREDS_PATH = os.getenv("GOOGLE_CREDS_PATH", "credentials.json")  # OAuth Desktop client downloaded from Google Cloud
 
+# Optional: credentials/token provided directly as JSON via env vars (safer in CI)
+CREDS_JSON = os.getenv("GOOGLE_CREDS_JSON")
+TOKEN_JSON = os.getenv("GOOGLE_TOKEN_JSON")
+
 
 def _auth_new_creds():
     flow = InstalledAppFlow.from_client_secrets_file(CREDS_PATH, SCOPES)
@@ -27,6 +31,14 @@ def _auth_new_creds():
 
 
 def _load_creds():
+    # If JSON env secrets are provided, materialize them to the expected file paths
+    if CREDS_JSON and not os.path.exists(CREDS_PATH):
+        with open(CREDS_PATH, "w", encoding="utf-8") as f:
+            f.write(CREDS_JSON)
+    if TOKEN_JSON:
+        # Always refresh token file with provided JSON if present
+        with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+            f.write(TOKEN_JSON)
     creds = None
     if os.path.exists(TOKEN_PATH):
         # IMPORTANT: pass the expected scopes here
