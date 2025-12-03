@@ -124,6 +124,33 @@ def _crew_covering_window(events: List[Dict], employees: List[Employee], window_
                 crew[emp.name] = emp
     return list(crew.values())
 
+def _crew_hours_in_window(events: List[Dict], employees: List[Employee], window_start: datetime, window_end: datetime, tz_name: str = "America/Chicago") -> Dict[str, float]:
+    """Calculate hours worked by each employee within the given time window.
+    
+    Returns a dictionary mapping employee name to hours worked (as float).
+    This enables weighted tip distribution based on actual time worked.
+    """
+    hours_by_emp: Dict[str, float] = {}
+    
+    for e in events:
+        assignees = match_baristas(e.get("summary", ""), e.get("attendees", []), employees)
+        if not assignees:
+            continue
+        
+        # Parse event start and end times with timezone conversion
+        event_start = _parse_dt(e.get("start", ""), tz_name)
+        event_end = _parse_dt(e.get("end", ""), tz_name)
+        
+        # Calculate overlap minutes with the window
+        overlap_mins = _overlap_minutes(event_start, event_end, window_start, window_end)
+        
+        if overlap_mins > 0:
+            overlap_hours = overlap_mins / 60.0
+            for emp in assignees:
+                hours_by_emp[emp.name] = hours_by_emp.get(emp.name, 0.0) + overlap_hours
+    
+    return hours_by_emp
+
 # --------------- Core computation ----------------
 def compute_payouts(
     events: List[Dict],
@@ -172,30 +199,37 @@ def compute_payouts(
         t_switch = _localize(d, SWITCH)
         t_close  = _localize(d, CLOSE)
 
-        # Use proper time windows for shift assignment
+        # Calculate hours worked by each employee in each window
         # Opening shift: 8am to 2pm
-        open_window_crew = _crew_covering_window(events, employees, t_open, t_switch, tz_name)
+        open_hours_by_emp = _crew_hours_in_window(events, employees, t_open, t_switch, tz_name)
         
         # Closing shift: 2pm to 9pm  
-        close_window_crew = _crew_covering_window(events, employees, t_switch, t_close, tz_name)
+        close_hours_by_emp = _crew_hours_in_window(events, employees, t_switch, t_close, tz_name)
 
-        # (Optional) per-employee switch_override block goes here if you added it
-        # ... keep your override adjustment here ...
+        # For backward compatibility: maintain crew lists for schedule display
+        open_window_crew = [emp_by_name[name] for name in open_hours_by_emp.keys()]
+        close_window_crew = [emp_by_name[name] for name in close_hours_by_emp.keys()]
 
         # Per-day pools (no averaging): use exactly what you enter for this date
         day_key = d.isoformat()
         day_cc_open  = float(per_day_cc_open_map.get(day_key, 0.0))
         day_cc_close = float(per_day_cc_close_map.get(day_key, 0.0))
 
-        if open_window_crew and day_cc_open:
-            share = day_cc_open / len(open_window_crew)
-            for emp in open_window_crew:
-                tips_cc[emp.name] += share
+        # Distribute opening tips proportionally to hours worked
+        if open_hours_by_emp and day_cc_open:
+            total_open_hours = sum(open_hours_by_emp.values())
+            if total_open_hours > 0:
+                for emp_name, hours in open_hours_by_emp.items():
+                    weight = hours / total_open_hours
+                    tips_cc[emp_name] += day_cc_open * weight
 
-        if close_window_crew and day_cc_close:
-            share = day_cc_close / len(close_window_crew)
-            for emp in close_window_crew:
-                tips_cc[emp.name] += share
+        # Distribute closing tips proportionally to hours worked
+        if close_hours_by_emp and day_cc_close:
+            total_close_hours = sum(close_hours_by_emp.values())
+            if total_close_hours > 0:
+                for emp_name, hours in close_hours_by_emp.items():
+                    weight = hours / total_close_hours
+                    tips_cc[emp_name] += day_cc_close * weight
 
         # schedule matrix
         cell = {name: "" for name in emp_names}
