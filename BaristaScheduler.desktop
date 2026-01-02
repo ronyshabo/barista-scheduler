@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Barista Scheduler
+Comment=Launch the Barista Scheduler Flask application
+Exec=/home/rony/Desktop/BaristaScheduler/barista-scheduler/start_barista_enhanced.sh
+Icon=applications-development
+Terminal=true
+Categories=Development;Office;
+StartupNotify=true
+Path=/home/rony/Desktop/BaristaScheduler/barista-scheduler

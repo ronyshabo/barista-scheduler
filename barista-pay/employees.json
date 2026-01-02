@@ -1,7 +1,8 @@
 [
   { "name": "Youssef", "aliases": ["Youssef", "Youssef S", "youssefshabo@gmail.com"] ,"base": 25.0, "switch_override": "None" },
   { "name": "Rony",  "aliases": ["Rony","Rony S", "ronyshabbo@gmail.com"], "base": 25.0 },
+  { "name": "Sam", "aliases": ["Laila", "Laila S"],"base": 25.0 },
   { "name": "Kat", "aliases": ["Kat", "Kat B", "blackwellkatherine99@gmail.com"], "base": 50.0},
   { "name": "Tima", "aliases": ["Tima", "Tima M","Timamousou@gmail.com"], "base": 200.0},
-  { "name": "Aihan", "aliases": ["Aihan", "Aihan N", "Aihannguyen@email.com"], "base": 50.0}
+  { "name": "Jocelyn", "aliases": ["Jocelyn", "Jocelyn M"], "base": 50.0}
 ]
