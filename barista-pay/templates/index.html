@@ -82,6 +82,40 @@
       <h1>Barista Payouts</h1>
       <p class="muted">Hours: <b>Open 08:00</b> → <b>Switch 14:00</b> → <b>Close 21:00</b>. Tips are split only among baristas on-duty in each window (openers/closers).</p>
 
+      <!-- BARISTA MANAGEMENT SECTION -->
+      <details style="margin-top:16px;">
+        <summary>Manage Baristas & Base Pay</summary>
+        <div style="margin-top:12px;">
+          <form method="post" action="/update_employees">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Aliases</th>
+                    <th class="right">Base Pay ($)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for emp in employees %}
+                  <tr>
+                    <td><b>{{ emp.name }}</b></td>
+                    <td><span class="muted">{{ emp.aliases|join(', ') }}</span></td>
+                    <td class="right">
+                      <input name="base_{{ emp.name }}" type="number" step="0.01" min="0" value="{{ emp.base }}" style="width:120px;">
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <div class="actions" style="margin-top:12px;">
+              <button type="submit">Save Base Pay Changes</button>
+            </div>
+          </form>
+        </div>
+      </details>
+
       <!-- STEP 1: Pick date range -->
       <form method="post" action="/refresh" novalidate>
         <div class="grid-1">
@@ -93,6 +127,25 @@
 
             <label for="end">End (inclusive)</label>
             <input id="end" name="end" type="date" value="{{ end_default }}" required>
+
+            <!-- Tip calculation mode selector -->
+            <h3 style="margin:16px 0 8px;">Tip Calculation Method</h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <label style="display:flex; align-items:center; padding:12px; border:2px solid var(--line); border-radius:10px; cursor:pointer; background:#fff;">
+                <input type="radio" name="tip_mode" value="shift_based" {% if not tip_mode or tip_mode == 'shift_based' %}checked{% endif %} style="margin-right:8px;">
+                <div>
+                  <div style="font-weight:600; color:var(--text);">Shift Based Tip-Out</div>
+                  <div style="font-size:0.85rem; color:var(--muted); margin-top:2px;">Enter opening/closing tips manually</div>
+                </div>
+              </label>
+              <label style="display:flex; align-items:center; padding:12px; border:2px solid var(--line); border-radius:10px; cursor:pointer; background:#fff;">
+                <input type="radio" name="tip_mode" value="daily_total" {% if tip_mode == 'daily_total' %}checked{% endif %} style="margin-right:8px;">
+                <div>
+                  <div style="font-weight:600; color:var(--text);">Tip Payload Drop</div>
+                  <div style="font-size:0.85rem; color:var(--muted); margin-top:2px;">Paste daily tip totals text</div>
+                </div>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -122,42 +175,78 @@
 
     <!-- STEP 2: Per-day Opening/Closing CC inputs (shown after picking a range) -->
     {% if dates_to_fill %}
-      <div class="card" style="margin-top:16px;">
-        <h2 style="margin-top:0;">Enter Credit Card Tips per Day</h2>
-        <form method="post" action="/refresh">
-          <input type="hidden" name="start" value="{{ start_default }}">
-          <input type="hidden" name="end" value="{{ end_default }}">
-          <input type="hidden" name="tips_phase" value="1">
+      {% if tip_mode == 'daily_total' %}
+        <!-- TIP PAYLOAD DROP MODE -->
+        <div class="card" style="margin-top:16px;">
+          <h2 style="margin-top:0;">Paste Daily Tip Totals</h2>
+          <p class="muted">Paste the tip report text below. The system will extract dates and amounts automatically.</p>
+          <form method="post" action="/refresh">
+            <input type="hidden" name="start" value="{{ start_default }}">
+            <input type="hidden" name="end" value="{{ end_default }}">
+            <input type="hidden" name="tip_mode" value="daily_total">
+            <input type="hidden" name="tips_phase" value="1">
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th class="right">Opening (08:00 → 14:00)</th>
-                  <th class="right">Closing (14:00 → 21:00)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for d in dates_to_fill %}
+            <label for="tip_payload">Tip Payload Text</label>
+            <textarea id="tip_payload" name="tip_payload" rows="15" style="width:100%; padding:12px; border-radius:10px; border:1px solid var(--line); font-family:monospace; font-size:0.9rem; resize:vertical;" placeholder="Example:
+02-10-2026
+12:15 AM
+Tips
+Tuesday, February 3, 2026 8:00 AM - Tuesday, February 3, 2026 9:00 PM
+$88.20
+PDF | Excel
+
+02-10-2026
+12:15 AM
+Tips
+Monday, February 2, 2026 8:00 AM - Monday, February 2, 2026 9:00 PM
+$41.78
+PDF | Excel"></textarea>
+
+            <div class="actions" style="margin-top:12px;">
+              <button type="submit">Compute Payouts</button>
+            </div>
+          </form>
+        </div>
+      {% else %}
+        <!-- SHIFT BASED MODE (ORIGINAL) -->
+        <div class="card" style="margin-top:16px;">
+          <h2 style="margin-top:0;">Enter Credit Card Tips per Day</h2>
+          <form method="post" action="/refresh">
+            <input type="hidden" name="start" value="{{ start_default }}">
+            <input type="hidden" name="end" value="{{ end_default }}">
+            <input type="hidden" name="tip_mode" value="shift_based">
+            <input type="hidden" name="tips_phase" value="1">
+
+            <div class="table-wrap">
+              <table>
+                <thead>
                   <tr>
-                    <td>
-                      {{ d }}
-                      <input type="hidden" name="dates" value="{{ d }}">
-                    </td>
-                    <td class="right"><input name="cc_open_{{ d }}"  type="number" step="0.01" min="0" value="0"></td>
-                    <td class="right"><input name="cc_close_{{ d }}" type="number" step="0.01" min="0" value="0"></td>
+                    <th>Date</th>
+                    <th class="right">Opening (08:00 → 14:00)</th>
+                    <th class="right">Closing (14:00 → 21:00)</th>
                   </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {% for d in dates_to_fill %}
+                    <tr>
+                      <td>
+                        {{ d }}
+                        <input type="hidden" name="dates" value="{{ d }}">
+                      </td>
+                      <td class="right"><input name="cc_open_{{ d }}"  type="number" step="0.01" min="0" value="0"></td>
+                      <td class="right"><input name="cc_close_{{ d }}" type="number" step="0.01" min="0" value="0"></td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
 
-          <div class="actions" style="margin-top:12px;">
-            <button type="submit">Compute Payouts</button>
-          </div>
-        </form>
-      </div>
+            <div class="actions" style="margin-top:12px;">
+              <button type="submit">Compute Payouts</button>
+            </div>
+          </form>
+        </div>
+      {% endif %}
     {% endif %}
 
     <!-- RESULTS -->

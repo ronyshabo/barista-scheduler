@@ -1,9 +1,10 @@
 from __future__ import annotations
 import json, re
 from dataclasses import dataclass
-from typing import Dict, Iterable, List,Any
+from typing import Dict, Iterable, List, Any
 from datetime import datetime, timedelta, date, time
 from typing import Optional
+from collections import defaultdict
 
 @dataclass
 class Employee:
@@ -151,6 +152,89 @@ def _crew_hours_in_window(events: List[Dict], employees: List[Employee], window_
     
     return hours_by_emp
 
+# --------------- Hour-by-hour weighted distribution ----------------
+def compute_hourly_effective_hours(events: List[Dict], employees: List[Employee], tz_name: str, 
+                                   open_time: time, switch_time: time, close_time: time) -> Dict[date, Dict[str, Dict[str, float]]]:
+    """
+    Calculate effective hours for each barista per day, split by opening/closing windows.
+    When multiple baristas work the same hour, they each get fractional credit.
+    
+    Returns: {date: {"opening": {barista: eff_hours}, "closing": {barista: eff_hours}}}
+    """
+    # Build hourly coverage: {date: {hour: [barista_names]}}
+    hourly_coverage = defaultdict(lambda: defaultdict(list))
+    
+    for event in events:
+        baristas = match_baristas(event.get("summary", ""), event.get("attendees", []), employees)
+        if not baristas:
+            continue
+        
+        start_dt = _parse_dt(event.get("start", ""), tz_name)
+        end_dt = _parse_dt(event.get("end", ""), tz_name)
+        
+        # Iterate through each hour from start to end
+        current_hour = start_dt.replace(minute=0, second=0, microsecond=0)
+        
+        while current_hour < end_dt:
+            next_hour = current_hour + timedelta(hours=1)
+            
+            # Check if this event overlaps with this hour
+            hour_start = current_hour
+            hour_end = min(next_hour, end_dt)
+            
+            if start_dt < hour_end and end_dt > hour_start:
+                # Calculate the fraction of this hour that overlaps
+                overlap_start = max(start_dt, hour_start)
+                overlap_end = min(end_dt, hour_end)
+                overlap_minutes = (overlap_end - overlap_start).total_seconds() / 60
+                
+                if overlap_minutes > 0:
+                    event_date = current_hour.date()
+                    hour_num = current_hour.hour
+                    
+                    for barista in baristas:
+                        # Store tuple: (barista_name, minutes_worked_this_hour)
+                        hourly_coverage[event_date][hour_num].append((barista.name, overlap_minutes))
+            
+            current_hour = next_hour
+    
+    # Calculate effective hours per window per barista per day
+    effective_by_day = {}
+    
+    for day, hours_data in hourly_coverage.items():
+        opening_eff = defaultdict(float)
+        closing_eff = defaultdict(float)
+        
+        for hour_num, barista_minutes_list in hours_data.items():
+            hour_t = time(hour_num, 0)
+            
+            # Group by barista name and sum their minutes for this hour
+            barista_hour_minutes = defaultdict(float)
+            for barista_name, minutes in barista_minutes_list:
+                barista_hour_minutes[barista_name] += minutes
+            
+            # Count unique baristas working this hour
+            num_baristas = len(barista_hour_minutes)
+            
+            if num_baristas > 0:
+                # Each barista gets fractional credit based on sharing
+                for barista_name, minutes in barista_hour_minutes.items():
+                    # Convert minutes to hours and divide by number of people sharing
+                    effective_hours = (minutes / 60.0) / num_baristas
+                    
+                    # Assign to opening or closing window
+                    if open_time <= hour_t < switch_time:
+                        opening_eff[barista_name] += effective_hours
+                    elif switch_time <= hour_t < close_time:
+                        closing_eff[barista_name] += effective_hours
+        
+        effective_by_day[day] = {
+            "opening": dict(opening_eff),
+            "closing": dict(closing_eff)
+        }
+    
+    return effective_by_day
+
 # --------------- Core computation ----------------
 def compute_payouts(
     events: List[Dict],
@@ -169,6 +253,7 @@ def compute_payouts(
     emp_by_name = {e.name: e for e in employees}
     emp_names = [e.name for e in employees]
 
+    # Calculate base pay per shift
     base_pay = {emp.name: 0.0 for emp in employees}
     for e in events:
         assignees = match_baristas(e.get("summary", ""), e.get("attendees", []), employees)
@@ -190,57 +275,57 @@ def compute_payouts(
     SWITCH = time.fromisoformat(switch_str)
     CLOSE  = time.fromisoformat(close_str)
 
+    # Get hourly effective hours (weighted for overlaps)
+    effective_by_day = compute_hourly_effective_hours(events, employees, tz_name, OPEN, SWITCH, CLOSE)
+
     tips_cc = {emp.name: 0.0 for emp in employees}
     schedule_rows = []
 
     d = start_day
     while d < end_day:
-        t_open   = _localize(d, OPEN)
-        t_switch = _localize(d, SWITCH)
-        t_close  = _localize(d, CLOSE)
-
-        # Calculate hours worked by each employee in each window
-        # Opening shift: 8am to 2pm
-        open_hours_by_emp = _crew_hours_in_window(events, employees, t_open, t_switch, tz_name)
-        
-        # Closing shift: 2pm to 9pm  
-        close_hours_by_emp = _crew_hours_in_window(events, employees, t_switch, t_close, tz_name)
-
-        # For backward compatibility: maintain crew lists for schedule display
-        open_window_crew = [emp_by_name[name] for name in open_hours_by_emp.keys()]
-        close_window_crew = [emp_by_name[name] for name in close_hours_by_emp.keys()]
-
-        # Per-day pools (no averaging): use exactly what you enter for this date
         day_key = d.isoformat()
+        
+        # Get effective hours for this day
+        day_eff = effective_by_day.get(d, {"opening": {}, "closing": {}})
+        opening_eff = day_eff["opening"]
+        closing_eff = day_eff["closing"]
+        
+        # Get tip amounts for this day
         day_cc_open  = float(per_day_cc_open_map.get(day_key, 0.0))
         day_cc_close = float(per_day_cc_close_map.get(day_key, 0.0))
 
-        # Distribute opening tips proportionally to hours worked
-        if open_hours_by_emp and day_cc_open:
-            total_open_hours = sum(open_hours_by_emp.values())
-            if total_open_hours > 0:
-                for emp_name, hours in open_hours_by_emp.items():
-                    weight = hours / total_open_hours
+        # Distribute opening tips based on effective hours
+        if opening_eff and day_cc_open > 0:
+            total_opening_eff = sum(opening_eff.values())
+            if total_opening_eff > 0:
+                for emp_name, eff_hours in opening_eff.items():
+                    weight = eff_hours / total_opening_eff
                     tips_cc[emp_name] += day_cc_open * weight
 
-        # Distribute closing tips proportionally to hours worked
-        if close_hours_by_emp and day_cc_close:
-            total_close_hours = sum(close_hours_by_emp.values())
-            if total_close_hours > 0:
-                for emp_name, hours in close_hours_by_emp.items():
-                    weight = hours / total_close_hours
+        # Distribute closing tips based on effective hours
+        if closing_eff and day_cc_close > 0:
+            total_closing_eff = sum(closing_eff.values())
+            if total_closing_eff > 0:
+                for emp_name, eff_hours in closing_eff.items():
+                    weight = eff_hours / total_closing_eff
                     tips_cc[emp_name] += day_cc_close * weight
 
-        # schedule matrix
+        # Build schedule matrix for display
         cell = {name: "" for name in emp_names}
-        shared_open  = len(open_window_crew)  > 1
-        shared_close = len(close_window_crew) > 1
-        for e in open_window_crew:
-            cell[e.name] += ("O*" if shared_open else "O")
-        for e in close_window_crew:
-            cell[e.name] += ("/" if cell[e.name] else "")
-            cell[e.name] += ("C*" if shared_close else "C")
-        # Get day of the week (Monday=0, Sunday=6)
+        
+        # Determine who worked opening/closing and if shared
+        open_workers = list(opening_eff.keys())
+        close_workers = list(closing_eff.keys())
+        
+        shared_open  = len(open_workers) > 1
+        shared_close = len(close_workers) > 1
+        
+        for name in open_workers:
+            cell[name] += ("O*" if shared_open else "O")
+        for name in close_workers:
+            cell[name] += ("/" if cell[name] else "")
+            cell[name] += ("C*" if shared_close else "C")
+        
         day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         day_of_week = day_names[d.weekday()]
         schedule_rows.append({"date": d.isoformat(), "day_of_week": day_of_week, "cells": cell})
@@ -261,6 +346,263 @@ def compute_payouts(
         })
     rows.sort(key=lambda r: r["name"].lower())
 
+    summary = {
+        "days": days_count,
+        "total_base": round(sum(r["base_pay"] for r in rows), 2),
+        "total_cc": round(sum(r["tips_cc"] for r in rows), 2),
+        "total_tips": round(sum(r["tips"] for r in rows), 2),
+        "grand_total": round(sum(r["total"] for r in rows), 2),
+        "schedule_headers": emp_names,
+        "schedule_rows": schedule_rows,
+    }
+    return rows, summary
+
+
+# --------------- Tip Payload Parsing ----------------
+def parse_tip_payload(payload_text: str, start_date: date, end_date: date) -> tuple[Dict[str, float], List[str]]:
+    """Parse tip payload text and extract daily tip amounts.
+    
+    Expected format per entry:
+        02-10-2026
+        12:15 AM
+        Tips
+        Tuesday, February 3, 2026 8:00 AM - Tuesday, February 3, 2026 9:00 PM
+        $88.20
+    
+    Returns:
+        - Dictionary mapping date (YYYY-MM-DD) to tip amount
+        - List of warning messages for dates outside range
+    """
+    import re
+    from datetime import datetime
+    
+    daily_tips: Dict[str, float] = {}
+    warnings: List[str] = []
+    
+    # Split by double newlines to get individual entries
+    lines = payload_text.strip().split('\n')
+    
+    # Pattern to match dates like "Tuesday, February 3, 2026"
+    date_pattern = r'([A-Za-z]+day),\s+([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})'
+    
+    # Pattern to match dollar amounts like "$88.20"
+    amount_pattern = r'\$\s*(\d+(?:\.\d{2})?)'
+    
+    month_map = {
+        'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+        'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12
+    }
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        
+        # Look for date pattern in current line
+        date_match = re.search(date_pattern, line, re.IGNORECASE)
+        
+        if date_match:
+            # Extract date components
+            month_name = date_match.group(2).lower()
+            day = int(date_match.group(3))
+            year = int(date_match.group(4))
+            
+            month = month_map.get(month_name)
+            if month:
+                try:
+                    parsed_date = date(year, month, day)
+                    
+                    # Look ahead for dollar amount (usually 1 line after date line)
+                    amount = None
+                    for j in range(i, min(i + 3, len(lines))):
+                        amount_match = re.search(amount_pattern, lines[j])
+                        if amount_match:
+                            amount = float(amount_match.group(1))
+                            break
+                    
+                    if amount is not None:
+                        date_key = parsed_date.isoformat()
+                        
+                        # Check if date is within range (inclusive on both ends)
+                        if start_date <= parsed_date <= end_date:
+                            daily_tips[date_key] = amount
+                        else:
+                            warnings.append(f"Date {date_key} (${amount:.2f}) is outside selected range and will be skipped")
+                
+                except ValueError:
+                    # Invalid date, skip
+                    pass
+        
+        i += 1
+    
+    return daily_tips, warnings
+
+
+# --------------- Daily Total Effective Hours ----------------
+def compute_daily_effective_hours(events: List[Dict], employees: List[Employee], tz_name: str, 
+                                  open_time: time, close_time: time) -> Dict[date, Dict[str, float]]:
+    """
+    Calculate effective hours for each barista per day (entire day, not split by windows).
+    When multiple baristas work the same hour, they each get fractional credit.
+    
+    Returns: {date: {barista_name: effective_hours}}
+    """
+    # Build hourly coverage: {date: {hour: [(barista_name, minutes)]}}
+    hourly_coverage = defaultdict(lambda: defaultdict(list))
+    
+    for event in events:
+        baristas = match_baristas(event.get("summary", ""), event.get("attendees", []), employees)
+        if not baristas:
+            continue
+        
+        start_dt = _parse_dt(event.get("start", ""), tz_name)
+        end_dt = _parse_dt(event.get("end", ""), tz_name)
+        
+        # Iterate through each hour from start to end
+        current_hour = start_dt.replace(minute=0, second=0, microsecond=0)
+        
+        while current_hour < end_dt:
+            next_hour = current_hour + timedelta(hours=1)
+            
+            # Check if this event overlaps with this hour
+            hour_start = current_hour
+            hour_end = min(next_hour, end_dt)
+            
+            if start_dt < hour_end and end_dt > hour_start:
+                # Calculate the fraction of this hour that overlaps
+                overlap_start = max(start_dt, hour_start)
+                overlap_end = min(end_dt, hour_end)
+                overlap_minutes = (overlap_end - overlap_start).total_seconds() / 60
+                
+                if overlap_minutes > 0:
+                    event_date = current_hour.date()
+                    hour_num = current_hour.hour
+                    
+                    # Only count hours within open-close window
+                    hour_t = time(hour_num, 0)
+                    if open_time <= hour_t < close_time:
+                        for barista in baristas:
+                            hourly_coverage[event_date][hour_num].append((barista.name, overlap_minutes))
+            
+            current_hour = next_hour
+    
+    # Calculate effective hours per barista per day
+    effective_by_day = {}
+    
+    for day, hours_data in hourly_coverage.items():
+        daily_eff = defaultdict(float)
+        
+        for hour_num, barista_minutes_list in hours_data.items():
+            # Group by barista name and sum their minutes for this hour
+            barista_hour_minutes = defaultdict(float)
+            for barista_name, minutes in barista_minutes_list:
+                barista_hour_minutes[barista_name] += minutes
+            
+            # Count unique baristas working this hour
+            num_baristas = len(barista_hour_minutes)
+            
+            if num_baristas > 0:
+                # Each barista gets fractional credit based on sharing
+                for barista_name, minutes in barista_hour_minutes.items():
+                    # Convert minutes to hours and divide by number of people sharing
+                    effective_hours = (minutes / 60.0) / num_baristas
+                    daily_eff[barista_name] += effective_hours
+        
+        effective_by_day[day] = dict(daily_eff)
+    
+    return effective_by_day
+
+
+# --------------- Daily Total Computation ----------------
+def compute_payouts_daily_total(
+    events: List[Dict],
+    employees: List[Employee],
+    tz_name: str = "",
+    daily_tips: Dict[str, float] | None = None,
+    open_str: str = "08:00",
+    close_str: str = "21:00",
+):
+    """Compute payouts distributing daily tip totals proportionally by hours worked.
+    
+    Unlike the shift-based method, this distributes the entire day's tips
+    across all hours worked, regardless of opening/closing windows.
+    Uses hourly weighting for fair overlap distribution.
+    """
+    daily_tips = daily_tips or {}
+    
+    emp_by_name = {e.name: e for e in employees}
+    emp_names = [e.name for e in employees]
+    
+    # Calculate base pay (per shift worked)
+    base_pay = {emp.name: 0.0 for emp in employees}
+    for e in events:
+        assignees = match_baristas(e.get("summary", ""), e.get("attendees", []), employees)
+        for emp in assignees:
+            base_pay[emp.name] += float(emp_by_name[emp.name].base)
+    
+    # Determine date range from events
+    if events:
+        starts = [_parse_dt(e["start"]) for e in events if "start" in e]
+        ends   = [_parse_dt(e["end"])   for e in events if "end" in e]
+        start_day = min(starts).date()
+        end_day   = (max(ends) + timedelta(days=1)).date()
+    else:
+        today = datetime.now().date()
+        start_day, end_day = today, today + timedelta(days=1)
+    
+    days_count = max(1, (end_day - start_day).days)
+    
+    OPEN = time.fromisoformat(open_str)
+    CLOSE = time.fromisoformat(close_str)
+    
+    # Get daily effective hours (weighted for overlaps)
+    effective_by_day = compute_daily_effective_hours(events, employees, tz_name, OPEN, CLOSE)
+    
+    tips_cc = {emp.name: 0.0 for emp in employees}
+    schedule_rows = []
+    
+    d = start_day
+    while d < end_day:
+        day_key = d.isoformat()
+        
+        # Get effective hours for this day
+        day_eff = effective_by_day.get(d, {})
+        
+        # Get tip total for this day
+        day_tips = float(daily_tips.get(day_key, 0.0))
+        
+        # Distribute tips based on effective hours
+        if day_eff and day_tips > 0:
+            total_eff_hours = sum(day_eff.values())
+            if total_eff_hours > 0:
+                for emp_name, eff_hours in day_eff.items():
+                    weight = eff_hours / total_eff_hours
+                    tips_cc[emp_name] += day_tips * weight
+        
+        # Build schedule matrix (simplified - just show who worked)
+        cell = {name: "" for name in emp_names}
+        for emp_name in day_eff.keys():
+            cell[emp_name] = "✓"
+        
+        day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        day_of_week = day_names[d.weekday()]
+        schedule_rows.append({"date": d.isoformat(), "day_of_week": day_of_week, "cells": cell})
+        
+        d += timedelta(days=1)
+    
+    rows = []
+    for emp in employees:
+        tip_total = tips_cc[emp.name]
+        base_plus_split = round(base_pay[emp.name] + tip_total, 2)
+        rows.append({
+            "name": emp.name,
+            "base_pay": round(base_pay[emp.name], 2),
+            "tips_cc": round(tip_total, 2),
+            "tips": round(tip_total, 2),
+            "base_plus_split": base_plus_split,
+            "total": base_plus_split,
+        })
+    rows.sort(key=lambda r: r["name"].lower())
+    
     summary = {
         "days": days_count,
         "total_base": round(sum(r["base_pay"] for r in rows), 2),
